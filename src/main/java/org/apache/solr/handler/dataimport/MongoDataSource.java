@@ -8,17 +8,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+import com.mongodb.*;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.mongodb.DBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
-import com.mongodb.MongoCredential;
-import com.mongodb.ReadPreference;
-import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
@@ -147,10 +142,10 @@ public class MongoDataSource extends DataSource<Iterator<Map<String, Object>>> {
   private MongoClient getClient(final String host, final Integer port, final String database,
       final String username, String password) {
 
-    LOG.debug("getClientFromURI(host, port, database, username, password) - start");
+    LOG.debug("getClient(host, port, database, username, password) - start");
 
     final ServerAddress address = new ServerAddress(host, port);
-    final List<MongoCredential> credentials = new ArrayList<MongoCredential>();
+    MongoClientOptions options = MongoClientOptions.builder().build();
     if (!StringUtils.isEmpty(username)) {
       LOG.info("Authenticating to " + database + " as " + username);
       // Cannot call toCharArray() on a null object.
@@ -158,12 +153,12 @@ public class MongoDataSource extends DataSource<Iterator<Map<String, Object>>> {
         LOG.info("null value set for the password parameter, setting to an empty string");
         password = "";
       }
-      LOG.debug("Configuring the MongoCredential list");
-      credentials.add(MongoCredential.createCredential(username, database, password.toCharArray()));
+      MongoCredential credentials = MongoCredential.createCredential(username, database, password.toCharArray());
+      return new MongoClient(address, credentials, options);
     }
 
     LOG.debug("Creating and returning new MongoClient() for " + host + ":" + port.toString());
-    return new MongoClient(address, credentials);
+    return new MongoClient(address, options);
   }
 
   /*
@@ -257,26 +252,14 @@ public class MongoDataSource extends DataSource<Iterator<Map<String, Object>>> {
       LOG.debug("next() - start");
 
       final DBObject mongoObject = this.bsonDocumentIterator.next();
-
-      final Map<String, Object> result = new HashMap<String, Object>();
-      final Set<String> keys = mongoObject.keySet();
-      final Iterator<String> iterator = keys.iterator();
-
-      while (iterator.hasNext()) {
-        final String key = iterator.next();
-        final Object innerObject = mongoObject.get(key);
-
-        result.put(key, innerObject);
-      }
-
       LOG.debug("Returning the resulting Map<String, Object>");
-      return result;
+      return mongoObject.toMap();
     }
   }
 
   private void resolveVariables(Context ctx, Properties initProps) {
     for (Map.Entry<Object, Object> entry : initProps.entrySet()) {
-      if (entry.getValue() != null) {
+      if (entry.getValue() != null && ctx != null) {
         entry.setValue(ctx.replaceTokens((String) entry.getValue()));
       }
     }
